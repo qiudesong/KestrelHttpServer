@@ -190,45 +190,74 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
             {
                 if (_inputLength == 0)
                 {
-                    return new ValueTask<ReadableBuffer>();
+                    return default(ValueTask<ReadableBuffer>);
                 }
 
-                var awaitable = _context.Input.ReadReadableBufferAsync();
-                if (awaitable.IsCompleted)
+                var awaitable = _context.Input.ReadAsync();
+                while (awaitable.IsCompleted)
                 {
-                    // .GetAwaiter().GetResult() done by ValueTask if needed
-                    var buffer = awaitable.Result;
-                    var actual = (int)Math.Min(buffer.Length, _inputLength);
+                    var result = awaitable.GetResult();
+                    var buffer = result.Buffer;
+                    var consumed = buffer.End;
+                    var examined = buffer.End;
 
-                    if (actual == 0)
+                    try
                     {
-                        _context.RejectRequest(RequestRejectionReason.UnexpectedEndOfRequestContent);
+                        if (!buffer.IsEmpty)
+                        {
+                            var actual = (int)Math.Min(buffer.Length, _inputLength);
+                            consumed = examined = buffer.Move(buffer.Start, actual);
+                            _inputLength -= actual;
+
+                            return new ValueTask<ReadableBuffer>(buffer.Slice(0, actual));
+                        }
+                        else if (result.IsCompleted)
+                        {
+                            _context.RejectRequest(RequestRejectionReason.UnexpectedEndOfRequestContent);
+                        }
+                    }
+                    finally
+                    {
+                        _context.Input.Advance(consumed, examined);
                     }
 
-                    _inputLength -= actual;
+                    awaitable = _context.Input.ReadAsync();
+                }
 
-                    return new ValueTask<ReadableBuffer>(buffer.Length == actual ? buffer : buffer.Slice(0, actual));
-                }
-                else
-                {
-                    return new ValueTask<ReadableBuffer>(OnReadAsyncAwaited(awaitable));
-                }
+                return new ValueTask<ReadableBuffer>(OnReadAsyncAwaited(awaitable));
             }
 
-            private async Task<ReadableBuffer> OnReadAsyncAwaited(ValueTask<ReadableBuffer> awaitable)
+            private async Task<ReadableBuffer> OnReadAsyncAwaited(ReadableBufferAwaitable awaitable)
             {
-                var buffer = await awaitable;
-
-                var actual = (int)Math.Min(buffer.Length, _inputLength);
-
-                if (actual == 0)
+                while (true)
                 {
-                    _context.RejectRequest(RequestRejectionReason.UnexpectedEndOfRequestContent);
+                    var result = await awaitable;
+                    var buffer = result.Buffer;
+                    var consumed = buffer.End;
+                    var examined = buffer.End;
+
+                    try
+                    {
+                        if (!buffer.IsEmpty)
+                        {
+                            var actual = (int)Math.Min(buffer.Length, _inputLength);
+                            consumed = examined = buffer.Move(buffer.Start, actual);
+                            _inputLength -= actual;
+
+                            return buffer.Slice(0, actual);
+                        }
+                        else if (result.IsCompleted)
+                        {
+                            _context.RejectRequest(RequestRejectionReason.UnexpectedEndOfRequestContent);
+                        }
+                    }
+                    finally
+                    {
+                        _context.Input.Advance(consumed, examined);
+                    }
+
+                    awaitable = _context.Input.ReadAsync();
                 }
-
-                _inputLength -= actual;
-
-                return buffer.Length == actual ? buffer : buffer.Slice(0, actual);
             }
         }
 
