@@ -80,9 +80,9 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Tests
                 RequestUpgrade = upgradeable;
             }
 
-            protected override ValueTask<ArraySegment<byte>> PeekAsync(CancellationToken cancellationToken)
+            protected override ValueTask<ReadableBuffer> OnReadAsync(CancellationToken cancellationToken)
             {
-                return new ValueTask<ArraySegment<byte>>(new ArraySegment<byte>(new byte[1]));
+                return new ValueTask<ReadableBuffer>(ReadableBuffer.Create(new byte[] { 1 }));
             }
         }
     }

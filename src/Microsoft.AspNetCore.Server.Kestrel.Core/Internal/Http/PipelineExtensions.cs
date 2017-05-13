@@ -18,60 +18,57 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
         [ThreadStatic]
         private static byte[] _numericBytesScratch;
 
-        public static ValueTask<ArraySegment<byte>> PeekAsync(this IPipeReader pipelineReader)
+        public static ValueTask<ReadableBuffer> ReadReadableBufferAsync(this IPipeReader pipeReader)
         {
-            var input = pipelineReader.ReadAsync();
-            while (input.IsCompleted)
+            var awaitable = pipeReader.ReadAsync();
+            while (awaitable.IsCompleted)
             {
-                var result = input.GetResult();
+                var result = awaitable.GetResult();
                 try
                 {
                     if (!result.Buffer.IsEmpty)
                     {
-                        var segment = result.Buffer.First;
-                        var data = segment.GetArray();
-
-                        return new ValueTask<ArraySegment<byte>>(data);
+                        return new ValueTask<ReadableBuffer>(result.Buffer);
                     }
                     else if (result.IsCompleted)
                     {
-                        return default(ValueTask<ArraySegment<byte>>);
+                        return default(ValueTask<ReadableBuffer>);
                     }
                 }
                 finally
                 {
-                    pipelineReader.Advance(result.Buffer.Start, result.Buffer.Start);
+                    pipeReader.Advance(result.Buffer.End, result.Buffer.End);
                 }
-                input = pipelineReader.ReadAsync();
+
+                awaitable = pipeReader.ReadAsync();
             }
 
-            return new ValueTask<ArraySegment<byte>>(pipelineReader.PeekAsyncAwaited(input));
+            return new ValueTask<ReadableBuffer>(pipeReader.ReadReadableBufferAsyncAwaited(awaitable));
         }
 
-        private static async Task<ArraySegment<byte>> PeekAsyncAwaited(this IPipeReader pipelineReader, ReadableBufferAwaitable readingTask)
+        private static async Task<ReadableBuffer> ReadReadableBufferAsyncAwaited(this IPipeReader pipeReader, ReadableBufferAwaitable awaitable)
         {
             while (true)
             {
-                var result = await readingTask;
+                var result = await awaitable;
 
                 try
                 {
                     if (!result.Buffer.IsEmpty)
                     {
-                        var segment = result.Buffer.First;
-                        return segment.GetArray();
+                        return result.Buffer;
                     }
                     else if (result.IsCompleted)
                     {
-                        return default(ArraySegment<byte>);
+                        return default(ReadableBuffer);
                     }
                 }
                 finally
                 {
-                    pipelineReader.Advance(result.Buffer.Start, result.Buffer.Start);
+                    pipeReader.Advance(result.Buffer.End, result.Buffer.End);
                 }
 
-                readingTask = pipelineReader.ReadAsync();
+                awaitable = pipeReader.ReadAsync();
             }
         }
 

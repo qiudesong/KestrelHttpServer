@@ -27,18 +27,17 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
                 while (true)
                 {
                     var writableBuffer = _pipe.Writer.Alloc(1);
-                    int bytesRead;
 
                     try
                     {
-                        bytesRead = await messageBody.ReadAsync(writableBuffer.Buffer.GetArray(), cancellationToken);
+                        var readableBuffer = await messageBody.ReadAsync(cancellationToken);
 
-                        if (bytesRead == 0)
+                        if (readableBuffer.Length == 0)
                         {
                             break;
                         }
 
-                        writableBuffer.Advance(bytesRead);
+                        writableBuffer.Append(readableBuffer);
                     }
                     finally
                     {
