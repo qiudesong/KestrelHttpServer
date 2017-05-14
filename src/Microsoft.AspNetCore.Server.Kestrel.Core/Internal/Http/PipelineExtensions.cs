@@ -18,60 +18,6 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
         [ThreadStatic]
         private static byte[] _numericBytesScratch;
 
-        public static ValueTask<ReadableBuffer> ReadReadableBufferAsync(this IPipeReader pipeReader)
-        {
-            var awaitable = pipeReader.ReadAsync();
-            while (awaitable.IsCompleted)
-            {
-                var result = awaitable.GetResult();
-                try
-                {
-                    if (!result.Buffer.IsEmpty)
-                    {
-                        return new ValueTask<ReadableBuffer>(result.Buffer);
-                    }
-                    else if (result.IsCompleted)
-                    {
-                        return default(ValueTask<ReadableBuffer>);
-                    }
-                }
-                finally
-                {
-                    pipeReader.Advance(result.Buffer.End, result.Buffer.End);
-                }
-
-                awaitable = pipeReader.ReadAsync();
-            }
-
-            return new ValueTask<ReadableBuffer>(pipeReader.ReadReadableBufferAsyncAwaited(awaitable));
-        }
-
-        private static async Task<ReadableBuffer> ReadReadableBufferAsyncAwaited(this IPipeReader pipeReader, ReadableBufferAwaitable awaitable)
-        {
-            while (true)
-            {
-                var result = await awaitable;
-
-                try
-                {
-                    if (!result.Buffer.IsEmpty)
-                    {
-                        return result.Buffer;
-                    }
-                    else if (result.IsCompleted)
-                    {
-                        return default(ReadableBuffer);
-                    }
-                }
-                finally
-                {
-                    pipeReader.Advance(result.Buffer.End, result.Buffer.End);
-                }
-
-                awaitable = pipeReader.ReadAsync();
-            }
-        }
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Span<byte> ToSpan(this ReadableBuffer buffer)
         {

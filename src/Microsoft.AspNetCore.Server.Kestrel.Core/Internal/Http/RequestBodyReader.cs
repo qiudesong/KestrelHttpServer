@@ -24,37 +24,17 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
 
             try
             {
-                while (true)
+                int read;
+
+                do
                 {
-                    var writableBuffer = _pipe.Writer.Alloc(1);
-
-                    try
-                    {
-                        var readableBuffer = await messageBody.ReadAsync(cancellationToken);
-
-                        if (readableBuffer.Length == 0)
-                        {
-                            break;
-                        }
-
-                        writableBuffer.Append(readableBuffer);
-                    }
-                    finally
-                    {
-                        writableBuffer.Commit();
-                    }
-
-                    var result = await writableBuffer.FlushAsync();
-                    if (result.IsCompleted)
-                    {
-                        // Pipe reader is done
-                        break;
-                    }
-                }
+                    read = await messageBody.ReadAsync(_pipe.Writer, cancellationToken);
+                } while (read > 0);
             }
             catch (Exception ex)
             {
                 error = ex;
+                throw;
             }
             finally
             {
@@ -75,14 +55,17 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
             {
                 var result = await _pipe.Reader.ReadAsync();
                 var readableBuffer = result.Buffer;
+                var consumed = readableBuffer.End;
 
                 try
                 {
                     if (!readableBuffer.IsEmpty)
                     {
-                        var count = Math.Min(result.Buffer.Length, buffer.Count);
-                        readableBuffer = result.Buffer.Slice(0, count);
+                        var count = Math.Min(readableBuffer.Length, buffer.Count);
+                        readableBuffer = readableBuffer.Slice(0, count);
                         readableBuffer.CopyTo(buffer);
+                        consumed = readableBuffer.Move(readableBuffer.Start, count);
+
                         return count;
                     }
                     else if (result.IsCompleted)
@@ -92,7 +75,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
                 }
                 finally
                 {
-                    _pipe.Reader.Advance(readableBuffer.End);
+                    _pipe.Reader.Advance(consumed);
                 }
             }
         }
